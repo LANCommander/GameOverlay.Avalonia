@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:host="clr-namespace:GameOverlay.Avalonia.Sample"
+             x:Class="GameOverlay.Avalonia.Sample.OverlayView"
+             x:DataType="host:OverlayViewModel">
+
+  <!-- The root must stay transparent: everything not painted here shows the
+       game through, because the payload blends with (ONE, INV_SRC_ALPHA). -->
+  <Grid Background="Transparent">
+
+    <Border Margin="32"
+            Padding="24"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Width="470"
+            CornerRadius="12"
+            BorderThickness="1"
+            BorderBrush="#40FFFFFF"
+            Background="#D2141821"
+            BoxShadow="0 8 32 0 #80000000">
+
+      <StackPanel Spacing="12">
+
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Border Width="10" Height="10" CornerRadius="5" Background="#4ADE80"
+                  VerticalAlignment="Center" />
+          <TextBlock Text="Avalonia Game Overlay"
+                     FontSize="19" FontWeight="SemiBold" Foreground="White" />
+        </StackPanel>
+
+        <TextBlock Text="Interactive Avalonia controls, rasterised out-of-process and composited into the game's backbuffer inside IDXGISwapChain::Present."
+                   TextWrapping="Wrap" FontSize="12.5" Foreground="#B0BCCB" />
+
+        <Separator Background="#30FFFFFF" />
+
+        <!-- These are the controls the scripted interaction test drives. Their
+             state has to be legible in a screenshot for the test to assert on. -->
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button x:Name="ClickButton" Content="Click me" Classes="accent"
+                  Command="{Binding ClickCommand}" />
+          <TextBlock Text="{Binding ClickCaption}" VerticalAlignment="Center"
+                     FontSize="13" FontFamily="Consolas" Foreground="#E6EDF3" />
+        </StackPanel>
+
+        <TextBox x:Name="DemoTextBox"
+                 Watermark="Type here to prove keyboard focus works"
+                 Text="{Binding TypedText}"
+                 FontSize="13" />
+
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Slider x:Name="DemoSlider" Width="250" Minimum="0" Maximum="100"
+                  Value="{Binding SliderValue}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding SliderCaption}" VerticalAlignment="Center"
+                     FontSize="13" FontFamily="Consolas" Foreground="#E6EDF3" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <CheckBox Content="Checkbox" IsChecked="{Binding IsChecked}" />
+          <ComboBox SelectedIndex="0" Width="130">
+            <ComboBoxItem>Windowed</ComboBoxItem>
+            <ComboBoxItem>Borderless</ComboBoxItem>
+            <ComboBoxItem>Exclusive</ComboBoxItem>
+          </ComboBox>
+        </StackPanel>
+
+        <ScrollViewer Height="70" Background="#20000000">
+          <ItemsControl ItemsSource="{Binding LogLines}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                           Foreground="#8FA0B4" Margin="6,1" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+        <TextBlock Text="Shift+F1 toggles interaction. While captured the game receives no input at all. The overlay draws its own cursor - it is composited by the library, so this control adds nothing for it."
+                   TextWrapping="Wrap" FontSize="11" Foreground="#7A8797" FontStyle="Italic" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

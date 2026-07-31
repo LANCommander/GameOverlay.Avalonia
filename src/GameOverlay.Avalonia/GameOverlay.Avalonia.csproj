@@ -1,0 +1,109 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net10.0-windows carries the Win32 backend (injection, DXGI sharing, the
+         native payload); net10.0 is the portable build the Linux/macOS backends
+         slot into. -->
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The injector, the payload and the game must all agree on bitness. -->
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <!-- Only the Windows build is pinned to a RID (it ships the win-x64 native
+         payload). The portable build stays RID-agnostic. -->
+    <RuntimeIdentifier Condition="'$(TargetFramework)' == 'net10.0-windows'">win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <RootNamespace>GameOverlay.Avalonia</RootNamespace>
+    <AssemblyName>GameOverlay.Avalonia</AssemblyName>
+
+    <!-- Package metadata -->
+    <IsPackable>true</IsPackable>
+    <PackageId>GameOverlay.Avalonia</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>GameOverlay.Avalonia</Authors>
+    <Description>Render Avalonia controls as an interactive overlay on top of a running game — Direct3D 11/12, Vulkan and OpenGL, including exclusive fullscreen.</Description>
+    <PackageTags>avalonia;overlay;game;direct3d;vulkan;opengl;hook</PackageTags>
+    <!-- RID-specific package: it carries a win-x64 native payload. -->
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia core + Skia (the framebuffer render path the offscreen top
+         level uses). Themes and fonts are deliberately NOT referenced: the
+         consuming application brings its own. -->
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Skia" Version="11.3.12" />
+  </ItemGroup>
+
+  <!-- Windows-only dependencies: the Win32 platform (KeyInterop lives here) and
+       the Vortice D3D11/DXGI wrappers the shared-texture producer uses. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <PackageReference Include="Avalonia.Win32" Version="11.3.12" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+  </ItemGroup>
+
+  <!-- Per-target platform backend: the Windows build compiles Platform/Windows,
+       the portable build compiles Platform/Fallback (and, later, Platform/Linux
+       etc.). Only one backend implementation of PlatformServices.CreateBackend
+       is ever in a given compilation. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <Compile Remove="Platform/Fallback/**/*.cs" />
+    <Compile Remove="Platform/Linux/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-windows'">
+    <Compile Remove="Platform/Windows/**/*.cs" />
+  </ItemGroup>
+
+  <!-- The injected native payload ships as a win-x64 native runtime asset, so a
+       package or project reference lands it next to the consumer's binary. Built
+       by CMake into build/bin; build.ps1 runs that before packing. Windows TFM
+       only. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <None Include="$(MSBuildThisFileDirectory)..\..\build\bin\GameOverlay.Native.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\build\bin\GameOverlay.Native.dll')"
+          Link="GameOverlay.Native.dll"
+          Pack="true"
+          PackagePath="runtimes/win-x64/native/"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The Linux payload ships as a linux-x64 native runtime asset (built by
+       build.sh / CMake into build-linux/bin), the counterpart of the win-x64
+       DLL above. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <None Include="$(MSBuildThisFileDirectory)..\..\build-linux\bin\GameOverlay.Native.so"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\build-linux\bin\GameOverlay.Native.so')"
+          Link="GameOverlay.Native.so"
+          Pack="true"
+          PackagePath="runtimes/linux-x64/native/"
+          CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Vulkan overlay layer + its manifest ride alongside the payload so
+         VK_LAYER_PATH (the app dir) finds them. -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\build-linux\bin\libVkLayer_gameoverlay.so"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\build-linux\bin\libVkLayer_gameoverlay.so')"
+          Link="libVkLayer_gameoverlay.so"
+          Pack="true"
+          PackagePath="runtimes/linux-x64/native/"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\build-linux\bin\VkLayer_gameoverlay.json"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\build-linux\bin\VkLayer_gameoverlay.json')"
+          Link="VkLayer_gameoverlay.json"
+          Pack="true"
+          PackagePath="runtimes/linux-x64/native/"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The sample app reaches the internal engine (session, test-pattern source)
+       for the -test-pattern transport diagnostic and the CLI harness. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="GameOverlay.Avalonia.Sample" />
+    <!-- Linux end-to-end transport test (tools/linux/testhost); drives the
+         internal OverlaySession + TestPatternFrameSource without Avalonia. -->
+    <InternalsVisibleTo Include="GameOverlay.Linux.TestHost" />
+  </ItemGroup>
+
+</Project>

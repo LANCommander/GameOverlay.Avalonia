@@ -1,0 +1,20 @@
+# --- CMake / native build output (out-of-source) ---
+/build/
+/build-linux/
+
+# --- .NET build output (per project, at any depth) ---
+bin/
+obj/
+*.user
+*.suo
+*.nupkg
+
+# --- editors / IDE / OS ---
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- diagnostics / local scratch ---
+frametimes.csv
