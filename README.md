@@ -17,7 +17,7 @@ window while the game itself received no input at all. The overlay is not a wind
 `GameOverlay.Avalonia` is a class library that any Avalonia application can reference to project its
 own controls onto a game. It runs **inside your Avalonia app** hosting your control on the app's UI
 thread so you call it from an initialised Avalonia application (a second `AppBuilder` per process is
-not possible). The native payload ships in the package under `runtimes/win-x64/native`.
+not possible). The native payload ships in the package under `runtimes/win-x64/native` (with the 32-bit payload for WoW64 games in the `x86/` subfolder alongside it).
 
 ```csharp
 using GameOverlay.Avalonia;
@@ -245,7 +245,7 @@ each fires only for the API the game actually uses.
   the framebuffer surface for an ANGLE/EGL surface (`EGL_ANGLE_d3d_texture_client_buffer`) would let
   Skia render straight into the shared texture. This is entirely host-side cost, so it does not affect
   the game.
-- x86 games, and multi-GPU setups where host and game are on different adapters (detected and reported rather than silently producing a blank overlay).
+- Multi-GPU setups where host and game are on different adapters (detected and reported rather than silently producing a blank overlay).
 
 ## Anti-cheat
 

@@ -22,6 +22,7 @@ internal sealed class LinuxProcessInjector : IProcessInjector
 
     public int Pid => _process.Id;
     public bool IsSuspended => false;   // LD_PRELOAD games start running immediately
+    public bool Is32BitTarget => false; // the Linux backend targets x86-64 only
 
     public bool IsAlive
     {

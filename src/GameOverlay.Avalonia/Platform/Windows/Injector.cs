@@ -36,9 +36,17 @@ internal sealed partial class GameProcess : IProcessInjector
     private readonly IntPtr _handle;
     private readonly Action<string>? _log;
     private IntPtr _mainThread;
+    private bool _is32Bit;
     private bool _disposed;
 
     public int Pid { get; }
+
+    /// <summary>
+    /// True when the target runs under WoW64 (a 32-bit game on 64-bit Windows).
+    /// Detected once at open/launch; drives payload selection and the injection
+    /// path.
+    /// </summary>
+    public bool Is32BitTarget => _is32Bit;
 
     /// <summary>True when the process is waiting to be resumed after injection.</summary>
     public bool IsSuspended => _mainThread != IntPtr.Zero;
@@ -85,8 +93,9 @@ internal sealed partial class GameProcess : IProcessInjector
         }
 
         var process = new GameProcess(info.hProcess, info.dwProcessId, log, info.hThread);
-        process.VerifyBitness();
-        process.Log($"[inject] launched {Path.GetFileName(exePath)} suspended as pid {info.dwProcessId}");
+        process.DetectBitness();
+        process.Log($"[inject] launched {Path.GetFileName(exePath)} suspended as pid {info.dwProcessId}" +
+                    (process._is32Bit ? " (32-bit)" : string.Empty));
         return process;
     }
 
@@ -119,23 +128,23 @@ internal sealed partial class GameProcess : IProcessInjector
         }
 
         var process = new GameProcess(handle, pid, log);
-        process.VerifyBitness();
+        process.DetectBitness();
         return process;
     }
 
     /// <summary>
-    /// An x86 game cannot load our x64 payload, and the failure mode if we try
-    /// anyway is a confusing remote-thread crash rather than a clear error.
+    /// Records whether the target is 32-bit (WoW64). Bitness decides which
+    /// payload is injected and how <c>LoadLibraryW</c>/<c>OverlayDetach</c> are
+    /// addressed in the target; picking the wrong one is a confusing remote-thread
+    /// crash rather than a clear error, so it is settled once up front.
     /// </summary>
-    private void VerifyBitness()
+    private void DetectBitness()
     {
-        if (!IsWow64Process(_handle, out bool isWow64)) return;
-        if (isWow64)
-        {
-            throw new NotSupportedException(
-                $"Process {Pid} is 32-bit. This overlay builds an x64 payload and only " +
-                "supports x64 games.");
-        }
+        // IsWow64Process reports true only for a 32-bit process on 64-bit Windows,
+        // which is exactly the case that needs the x86 payload. A failed call
+        // (e.g. on 32-bit Windows, which the x64 host does not run on) leaves the
+        // default of "same bitness as the host".
+        _is32Bit = IsWow64Process(_handle, out bool isWow64) && isWow64;
     }
 
     // --- payload loading ---------------------------------------------------
@@ -165,12 +174,7 @@ internal sealed partial class GameProcess : IProcessInjector
             if (!WriteProcessMemory(_handle, remoteBuffer, pathBytes, (nuint)pathBytes.Length, out _))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "WriteProcessMemory failed");
 
-            // kernel32 is loaded at the same base in every process in a session,
-            // so our own LoadLibraryW address is valid in the target too.
-            IntPtr kernel32 = GetModuleHandle("kernel32.dll");
-            IntPtr loadLibrary = GetProcAddress(kernel32, "LoadLibraryW");
-            if (loadLibrary == IntPtr.Zero)
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "GetProcAddress(LoadLibraryW) failed");
+            IntPtr loadLibrary = ResolveRemoteLoadLibraryW();
 
             IntPtr thread = CreateRemoteThread(_handle, IntPtr.Zero, 0, loadLibrary,
                                                remoteBuffer, 0, out _);
@@ -204,6 +208,42 @@ internal sealed partial class GameProcess : IProcessInjector
     }
 
     /// <summary>
+    /// Resolves the address of <c>kernel32!LoadLibraryW</c> as the target process
+    /// sees it, to use as a <see cref="CreateRemoteThread"/> start routine.
+    /// </summary>
+    private IntPtr ResolveRemoteLoadLibraryW()
+    {
+        if (!_is32Bit)
+        {
+            // Same bitness: kernel32 loads at the same base in every same-arch
+            // process in a session, so our own LoadLibraryW address is valid in
+            // the target too. This is the original, battle-tested path.
+            IntPtr kernel32 = GetModuleHandle("kernel32.dll");
+            IntPtr loadLibrary = GetProcAddress(kernel32, "LoadLibraryW");
+            if (loadLibrary == IntPtr.Zero)
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "GetProcAddress(LoadLibraryW) failed");
+            return loadLibrary;
+        }
+
+        // Cross-bitness (x64 host -> x86 target): our 64-bit LoadLibraryW address
+        // means nothing in the target's 32-bit kernel32, which sits at a different
+        // base. Rebuild the address from the target's 32-bit kernel32 base plus
+        // LoadLibraryW's RVA read from the on-disk SysWOW64 copy. An export RVA is
+        // not rebased at load time, so base + RVA is exact.
+        IntPtr remoteKernel32 = FindRemoteModuleByLeafName("kernel32.dll");
+        if (remoteKernel32 == IntPtr.Zero)
+            throw new InvalidOperationException(
+                $"Could not locate the 32-bit kernel32.dll in process {Pid}. The WoW64 " +
+                "environment may not be initialised yet.");
+
+        // SystemX86 resolves to SysWOW64 on 64-bit Windows: the 32-bit system DLLs.
+        string kernel32Path = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.SystemX86), "kernel32.dll");
+        uint rva = PeExports.GetExportRva(kernel32Path, "LoadLibraryW");
+        return remoteKernel32 + (nint)rva;
+    }
+
+    /// <summary>
     /// Calls the payload's exported OverlayDetach on a remote thread, which
     /// unhooks and then frees itself.
     /// </summary>
@@ -212,32 +252,31 @@ internal sealed partial class GameProcess : IProcessInjector
         IntPtr remoteBase = FindRemoteModule(dllPath);
         if (remoteBase == IntPtr.Zero) return;
 
-        // Resolve the export's offset in our own copy, then rebase it onto the
-        // remote module. Loading it locally is harmless: DllMain's worker
-        // thread finds no swapchain to hook in this process.
-        IntPtr localModule = LoadLibrary(dllPath);
-        if (localModule == IntPtr.Zero) return;
-
+        // Rebase OverlayDetach's RVA (read from the payload file) onto the remote
+        // module. Reading the RVA from disk - rather than LoadLibrary-ing our own
+        // copy to ask GetProcAddress - is what makes this bitness-agnostic: a
+        // 64-bit host cannot load a 32-bit payload, but it can still parse its
+        // export table. An export RVA is not rebased at load, so base + RVA is the
+        // export's address in the game.
+        uint rva;
         try
         {
-            IntPtr localExport = GetProcAddress(localModule, "OverlayDetach");
-            if (localExport == IntPtr.Zero) return;
-
-            nint offset = localExport - localModule;
-            IntPtr remoteExport = remoteBase + offset;
-
-            IntPtr thread = CreateRemoteThread(_handle, IntPtr.Zero, 0, remoteExport,
-                                               IntPtr.Zero, 0, out _);
-            if (thread == IntPtr.Zero) return;
-
-            WaitForSingleObject(thread, 5000);
-            CloseHandle(thread);
-            Log($"[inject] payload detached from pid {Pid}");
+            rva = PeExports.GetExportRva(Path.GetFullPath(dllPath), "OverlayDetach");
         }
-        finally
+        catch (Exception ex)
         {
-            FreeLibrary(localModule);
+            Log($"[inject] cannot resolve OverlayDetach in {dllPath}: {ex.Message}");
+            return;
         }
+
+        IntPtr remoteExport = remoteBase + (nint)rva;
+        IntPtr thread = CreateRemoteThread(_handle, IntPtr.Zero, 0, remoteExport,
+                                           IntPtr.Zero, 0, out _);
+        if (thread == IntPtr.Zero) return;
+
+        WaitForSingleObject(thread, 5000);
+        CloseHandle(thread);
+        Log($"[inject] payload detached from pid {Pid}");
     }
 
     private IntPtr FindRemoteModule(string dllPath)
@@ -258,6 +297,32 @@ internal sealed partial class GameProcess : IProcessInjector
             buffer.Clear();
             if (GetModuleFileNameEx(_handle, modules[i], buffer, buffer.Capacity) == 0) continue;
             if (string.Equals(buffer.ToString(), target, StringComparison.OrdinalIgnoreCase))
+                return modules[i];
+        }
+        return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Finds a loaded module in the target by its file name alone (e.g.
+    /// "kernel32.dll"), returning its base address. Used to locate the target's
+    /// 32-bit kernel32 for cross-bitness injection, where its full path
+    /// (SysWOW64) is not known ahead of time.
+    /// </summary>
+    private IntPtr FindRemoteModuleByLeafName(string leafName)
+    {
+        IntPtr[] modules = new IntPtr[1024];
+        int byteSize = modules.Length * IntPtr.Size;
+        // 0x03 = LIST_MODULES_ALL, which includes a WoW64 target's 32-bit modules.
+        if (!EnumProcessModulesEx(_handle, modules, (uint)byteSize, out uint needed, 0x03))
+            return IntPtr.Zero;
+
+        int count = (int)Math.Min((uint)modules.Length, needed / (uint)IntPtr.Size);
+        var buffer = new StringBuilder(1024);
+        for (int i = 0; i < count; i++)
+        {
+            buffer.Clear();
+            if (GetModuleFileNameEx(_handle, modules[i], buffer, buffer.Capacity) == 0) continue;
+            if (string.Equals(Path.GetFileName(buffer.ToString()), leafName, StringComparison.OrdinalIgnoreCase))
                 return modules[i];
         }
         return IntPtr.Zero;
@@ -402,13 +467,6 @@ internal sealed partial class GameProcess : IProcessInjector
     [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16,
                    EntryPoint = "GetModuleHandleW")]
     private static partial IntPtr GetModuleHandle(string name);
-
-    [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16, EntryPoint = "LoadLibraryW")]
-    private static partial IntPtr LoadLibrary(string path);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool FreeLibrary(IntPtr module);
 
     // GetProcAddress takes LPCSTR; export names are ASCII, for which UTF-8 is
     // byte-identical.

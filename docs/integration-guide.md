@@ -21,12 +21,12 @@ This guide is for application developers who want to add an overlay to their own
 ## Requirements & platform support
 
 - **.NET 10** and **Avalonia 11.3+**.
-- **64-bit only.** The overlay targets x64 games; it will not inject into a 32-bit process.
+- **x64 host; 32-bit or 64-bit games.** Your host application must be **x64**. It overlays both **64-bit and 32-bit (WoW64)** Windows games — the library detects the target's bitness and injects the matching payload automatically, with no code change on your side. (Linux is x64-only.)
 - Your app must be a **running, initialized Avalonia application** (see below). The library never calls `AppBuilder` itself.
 
 | Platform | Graphics APIs | Windowing | Notes |
 |---|---|---|---|
-| **Windows x64** | D3D9, D3D10, D3D11, D3D12, Vulkan, OpenGL | n/a | Attach to a running game or launch one. |
+| **Windows x64** | D3D9, D3D10, D3D11, D3D12, Vulkan, OpenGL | n/a | Attach to a running game or launch one. **Both 32-bit and 64-bit games** are supported. |
 | **Linux x64** | OpenGL (GLX & desktop-GL EGL), Vulkan | X11 | Launch-only (the payload is preloaded at start). Wayland and OpenGL-ES are not yet supported. |
 | **macOS** | none | none | Not supported. |
 
@@ -40,7 +40,7 @@ Add the package (name it as published in your feed):
 <PackageReference Include="GameOverlay.Avalonia" Version="0.1.0" />
 ```
 
-The package carries the native payload as a runtime asset (`runtimes/win-x64/native/GameOverlay.Native.dll`, and on Linux `runtimes/linux-x64/native/GameOverlay.Native.so` plus the Vulkan layer). It deploys automatically when you publish with a matching **runtime identifier** (see [Deployment](#deployment)).
+The package carries the native payload as a runtime asset (`runtimes/win-x64/native/GameOverlay.Native.dll`, with the **32-bit payload alongside it** in `runtimes/win-x64/native/x86/GameOverlay.Native.dll`, and on Linux `runtimes/linux-x64/native/GameOverlay.Native.so` plus the Vulkan layer). Both Windows payloads ship under the `win-x64` RID because the host is always x64; it carries the x86 payload only to inject into 32-bit games. They deploy automatically when you publish with a matching **runtime identifier** (see [Deployment](#deployment)).
 
 Target framework:
 
@@ -206,6 +206,18 @@ overlay.ToggleHotkey = null;                                            // no ho
 using var overlay = GameOverlay.Launch(@"C:\Games\MyGame\MyGame.exe", arguments: "--windowed", options);
 ```
 
+### 32-bit (WoW64) games
+
+There is **no separate API for 32-bit games** — `AttachToProcess` and `Launch` work exactly the same. When you point either at a 32-bit process, the library:
+
+1. Detects that the target runs under WoW64.
+2. Selects the **x86 payload** (`runtimes/win-x64/native/x86/GameOverlay.Native.dll`) instead of the x64 one.
+3. Injects it across the bitness boundary — the x64 host resolves the target's 32-bit `LoadLibraryW` and `OverlayDetach` addresses directly, so no separate helper process is launched.
+
+All of this is automatic; you write the same code whether the game is 32-bit or 64-bit. The only requirements are that the **x86 payload is deployed** next to your app (it is, if you published with `-r win-x64`, or you can point `GameOverlayOptions.PayloadPath` at an explicit x86 `GameOverlay.Native.dll`) and that your host runs with the same or greater privilege than the game.
+
+> Detaching a 32-bit game cleanly (`Dispose`) works the same way; the payload unhooks and unloads itself on a remote thread just as it does for x64.
+
 ## API reference
 
 ### `GameOverlay`
@@ -273,9 +285,9 @@ dotnet publish -c Release -r win-x64      # Windows
 dotnet publish -c Release -r linux-x64    # Linux
 ```
 
-This places `GameOverlay.Native.dll` (Windows), or `GameOverlay.Native.so` plus the Vulkan layer (`libVkLayer_gameoverlay.so` and `VkLayer_gameoverlay.json`) on Linux, in the publish output, where the library discovers them automatically. Alternatively, set `GameOverlayOptions.PayloadPath` to point at the payload explicitly.
+This places `GameOverlay.Native.dll` (Windows) — **plus the 32-bit payload under `runtimes/win-x64/native/x86/`** so 32-bit games can be overlaid — or `GameOverlay.Native.so` plus the Vulkan layer (`libVkLayer_gameoverlay.so` and `VkLayer_gameoverlay.json`) on Linux, in the publish output, where the library discovers them automatically. Alternatively, set `GameOverlayOptions.PayloadPath` to point at the payload explicitly (choose the payload that matches the target game's bitness).
 
-The library looks for the payload in this order: your `GameOverlayOptions.PayloadPath`; `runtimes/<rid>/native/` next to the app; the app's base directory; and, as a dev convenience, a `build/bin` (`build-linux/bin` on Linux) tree above the app.
+The library selects the payload by the **target game's** bitness (x64 or x86), then looks for it in this order: your `GameOverlayOptions.PayloadPath`; `runtimes/<rid>/native/` next to the app (the `x86/` subfolder for a 32-bit target); the app's base directory; and, as a dev convenience, a `build/bin` tree above the app (`build-x86/bin` for a 32-bit target, `build-linux/bin` on Linux).
 
 ## Diagnostics & troubleshooting
 
@@ -292,9 +304,10 @@ Common issues:
 | Symptom | Cause / fix |
 |---|---|
 | `InvalidOperationException: Avalonia is not initialised` | Create the overlay from within a running Avalonia app, on the UI thread. Call `AppBuilder…SetupWithoutStarting()` (or use your app's existing lifetime) first. |
-| `NotSupportedException: Process … is 32-bit` | The overlay is x64-only; the target game must be 64-bit. |
 | `Win32Exception … OpenProcess … (access denied)` | The game is elevated; run your host elevated too. |
+| `FileNotFoundException: GameOverlay.Native.dll (x86) … not found` | Injecting a 32-bit game but the x86 payload is missing. Publish with `-r win-x64` (which deploys `runtimes/win-x64/native/x86/`), or set `PayloadPath` to an x86 payload. |
 | `FileNotFoundException: GameOverlay.Native.* not found` | Publish with `-r <rid>` so the native asset deploys, or set `PayloadPath`. |
+| `InvalidOperationException: Could not locate the 32-bit kernel32.dll` | The 32-bit game's WoW64 environment had not initialized when injection ran; retry the attach, or attach after the game has started rather than immediately at launch. |
 | `TimeoutException: Payload did not report a swapchain` | The game had not presented a frame within `AttachTimeout`, or a security product blocked the injection. Check the payload log. |
 | Overlay covers the whole game | Your root control has an opaque background; make it transparent or translucent (see [Designing the overlay UI](#designing-the-overlay-ui)). |
 | Nothing appears | Confirm `IsAttached` fired and `Interactive`/`Visible` is set; check `Statistics.PayloadDraws` is advancing. |
@@ -303,7 +316,7 @@ If the host process crashes, the payload detects the stalled heartbeat, stops co
 
 ## Platform notes
 
-**Windows.** Boot with `.UseWin32().UseSkia()` and software rendering. All of D3D9/10/11/12, Vulkan and OpenGL are supported, including exclusive fullscreen. Attach to a running game or `Launch` one (Vulkan requires `Launch`).
+**Windows.** Boot with `.UseWin32().UseSkia()` and software rendering. All of D3D9/10/11/12, Vulkan and OpenGL are supported, including exclusive fullscreen. Attach to a running game or `Launch` one (Vulkan requires `Launch`). Both **32-bit and 64-bit** games are supported from the same x64 host; the matching payload is chosen automatically (see [32-bit (WoW64) games](#32-bit-wow64-games)).
 
 **Linux.** Boot with `.UseX11().UseSkia()` and include a font (the library brings none, for example `.WithInterFont()` from `Avalonia.Fonts.Inter`). OpenGL (GLX and desktop-GL EGL) and Vulkan are supported on X11, and the overlay is **launch-only** (the payload preloads via `LD_PRELOAD` and a Vulkan layer). Wayland and OpenGL-ES are not yet supported.
 

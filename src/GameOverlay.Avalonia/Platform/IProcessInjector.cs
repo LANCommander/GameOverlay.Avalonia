@@ -20,6 +20,12 @@ internal interface IProcessInjector : IDisposable
     /// <summary>The target game's process id.</summary>
     int Pid { get; }
 
+    /// <summary>
+    /// True when the target is a 32-bit process (WoW64 on 64-bit Windows). The
+    /// overlay selects the matching-bitness payload and injection path from this.
+    /// </summary>
+    bool Is32BitTarget { get; }
+
     /// <summary>True while the target process is still running.</summary>
     bool IsAlive { get; }
 

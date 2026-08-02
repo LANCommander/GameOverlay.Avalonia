@@ -56,7 +56,7 @@ public sealed class GameOverlay : IDisposable
         _afterInject = afterInject;
 
         _host = OnUiThread(() => new OverlayHost(options.Scaling));
-        _session = new OverlaySession(game, ResolvePayloadPath(options), _host, _log);
+        _session = new OverlaySession(game, ResolvePayloadPath(options, game), _host, _log);
         _session.GameExited += OnGameExited;
 
         ToggleHotkey = options.ToggleHotkey;
@@ -242,7 +242,7 @@ public sealed class GameOverlay : IDisposable
 
     private void RaiseOnUi(Action action) => Dispatcher.UIThread.Post(action);
 
-    private static string ResolvePayloadPath(GameOverlayOptions options)
+    private static string ResolvePayloadPath(GameOverlayOptions options, IProcessInjector game)
     {
         if (!string.IsNullOrEmpty(options.PayloadPath))
         {
@@ -259,24 +259,35 @@ public sealed class GameOverlay : IDisposable
         string rid = windows ? "win-x64" : "linux-x64";
         string devTree = windows ? "build" : "build-linux";
 
+        // The payload must match the *target's* bitness, not the host's: the x64
+        // host injects its x86 payload into 32-bit (WoW64) games. The x86 payload
+        // rides alongside the x64 host under an "x86" subfolder (a win-x86 RID
+        // asset would not deploy for a win-x64 app) and, in a dev tree, comes from
+        // the parallel build-x86/bin. Everything else stays on the x64 layout.
+        bool wantX86 = windows && game.Is32BitTarget;
+        string sub = wantX86 ? "x86" : string.Empty;
+        string devTreeForTarget = wantX86 ? devTree + "-x86" : devTree;
+
         string?[] candidates =
         {
             // NuGet native asset, and plain copy-to-output layouts.
-            Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native", fileName),
-            Path.Combine(AppContext.BaseDirectory, fileName),
+            Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native", sub, fileName),
+            Path.Combine(AppContext.BaseDirectory, sub, fileName),
         };
         foreach (string? c in candidates)
             if (c is not null && File.Exists(c)) return c;
 
-        // Dev convenience: walk up to a CMake build/bin (build-linux/bin) tree.
+        // Dev convenience: walk up to a CMake build/bin (build-x86/bin,
+        // build-linux/bin) tree.
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            string build = Path.Combine(dir.FullName, devTree, "bin", fileName);
+            string build = Path.Combine(dir.FullName, devTreeForTarget, "bin", fileName);
             if (File.Exists(build)) return build;
         }
 
+        string ridPath = sub.Length == 0 ? $"runtimes/{rid}/native" : $"runtimes/{rid}/native/{sub}";
         throw new FileNotFoundException(
-            $"{fileName} was not found next to the application, under " +
-            $"runtimes/{rid}/native, or in a {devTree}/bin tree. Set GameOverlayOptions.PayloadPath.");
+            $"{fileName} ({(wantX86 ? "x86" : "x64")}) was not found next to the application, under " +
+            $"{ridPath}, or in a {devTreeForTarget}/bin tree. Set GameOverlayOptions.PayloadPath.");
     }
 }

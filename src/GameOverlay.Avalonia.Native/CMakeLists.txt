@@ -44,6 +44,11 @@ if(WIN32)
         opengl_hooks.cpp
         input.cpp
         platform/platform_win32.cpp
+        # Module-definition file: pins OverlayDetach's exported name undecorated.
+        # Without it, the __stdcall export decorates to _OverlayDetach@4 on x86
+        # and the host's by-name GetProcAddress lookup fails. MSVC treats a .def
+        # in the source list as the linker's /DEF input automatically.
+        GameOverlay.Native.def
     )
 elseif(UNIX AND NOT APPLE)
     # Linux backend: LD_PRELOAD interposer + CPU-fed GLX renderer, with the

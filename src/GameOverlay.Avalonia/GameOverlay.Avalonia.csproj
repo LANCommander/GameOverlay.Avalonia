@@ -71,6 +71,17 @@
           Pack="true"
           PackagePath="runtimes/win-x64/native/"
           CopyToOutputDirectory="PreserveNewest" />
+    <!-- The x86 payload for 32-bit (WoW64) games. The host is always x64, so this
+         cannot ship as a win-x86 RID asset (it would not deploy for a win-x64
+         app); it rides alongside the x64 payload in an x86/ subfolder, which
+         ResolvePayloadPath probes when the target is 32-bit. Built by CMake into
+         build-x86/bin (see build.ps1). -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\build-x86\bin\GameOverlay.Native.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\build-x86\bin\GameOverlay.Native.dll')"
+          Link="x86\GameOverlay.Native.dll"
+          Pack="true"
+          PackagePath="runtimes/win-x64/native/x86/"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- The Linux payload ships as a linux-x64 native runtime asset (built by

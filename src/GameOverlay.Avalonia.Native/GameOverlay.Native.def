@@ -1,0 +1,8 @@
+; Export the payload's public entry points by their plain, undecorated names.
+;
+; OverlayDetach is declared WINAPI (__stdcall). On x86 that decorates the
+; exported name to _OverlayDetach@4, which the host's GetProcAddress("OverlayDetach")
+; would fail to find. A module-definition file pins the undecorated name on both
+; x86 and x64, so the injector's by-name lookup works regardless of bitness.
+EXPORTS
+    OverlayDetach
