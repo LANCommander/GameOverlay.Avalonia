@@ -58,6 +58,9 @@ internal struct SharedState
 public enum GameGraphicsApi : uint
 {
     Unknown = 0,
+    // D3D8 predates DXGI and, like D3D9, has no GPU-shared texture path; it
+    // reuses the same CPU shared-memory frame transport.
+    D3D8 = 8,
     // D3D9 has no GPU-shared texture path; it takes the CPU shared-memory frame
     // transport instead. See <see cref="CpuFrameProducer"/> and shared_state.h.
     D3D9 = 9,
@@ -132,7 +135,7 @@ internal struct InputRingHeader
 /// </summary>
 internal sealed unsafe class OverlaySharedState : IDisposable
 {
-    public const uint AbiVersion = 5;
+    public const uint AbiVersion = 6;
 
     /// <summary>Must match <c>overlay::kInputRingCapacity</c>.</summary>
     public const int InputRingCapacity = 512;

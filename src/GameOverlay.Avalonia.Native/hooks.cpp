@@ -6,6 +6,7 @@
 #include <dxgi1_4.h>
 #include <MinHook.h>
 
+#include "d3d8_hooks.h"
 #include "d3d9_hooks.h"
 #include "d3d10_renderer.h"
 #include "d3d11_renderer.h"
@@ -448,22 +449,23 @@ bool InstallHooks() {
         return false;
     }
 
-    // Vulkan, OpenGL and D3D9 first, and independently: a game using one of
-    // those may have no usable D3D11 device to probe the DXGI vtable with, and
-    // failing that probe must not take those paths down with it. D3D9 in
-    // particular shares nothing with DXGI.
+    // Vulkan, OpenGL, D3D9 and D3D8 first, and independently: a game using one
+    // of those may have no usable D3D11 device to probe the DXGI vtable with,
+    // and failing that probe must not take those paths down with it. The
+    // fixed-function D3D8/9 paths in particular share nothing with DXGI.
     const bool vulkanHooked = InstallVulkanHooks();
     const bool openglHooked = InstallOpenGLHooks();
     const bool d3d9Hooked = InstallD3D9Hooks();
+    const bool d3d8Hooked = InstallD3D8Hooks();
 
     void** vtable = nullptr;
     void** vtable1 = nullptr;
     if (!CaptureVtables(vtable, vtable1)) {
-        if (vulkanHooked || openglHooked || d3d9Hooked) {
+        if (vulkanHooked || openglHooked || d3d9Hooked || d3d8Hooked) {
             g_hooksInstalled = true;
             if (SharedState* state = GetSharedState()) state->dllAttached = 1;
-            OVERLAY_LOG("DXGI probe failed but non-DXGI hooks are live (Vulkan:%d OpenGL:%d D3D9:%d)",
-                        vulkanHooked, openglHooked, d3d9Hooked);
+            OVERLAY_LOG("DXGI probe failed but non-DXGI hooks are live (Vulkan:%d OpenGL:%d D3D9:%d D3D8:%d)",
+                        vulkanHooked, openglHooked, d3d9Hooked, d3d8Hooked);
             return true;
         }
         MH_Uninitialize();
@@ -499,9 +501,10 @@ bool InstallHooks() {
     if (SharedState* state = GetSharedState()) {
         state->dllAttached = 1;
     }
-    OVERLAY_LOG("hooks installed (Present%s, ResizeBuffers%s%s%s)",
+    OVERLAY_LOG("hooks installed (Present%s, ResizeBuffers%s%s%s%s)",
                 vtable1 ? ", Present1" : "", vulkanHooked ? ", Vulkan" : "",
-                openglHooked ? ", OpenGL" : "", d3d9Hooked ? ", D3D9" : "");
+                openglHooked ? ", OpenGL" : "", d3d9Hooked ? ", D3D9" : "",
+                d3d8Hooked ? ", D3D8" : "");
     return true;
 }
 
@@ -522,6 +525,7 @@ void RemoveHooks() {
     RemoveVulkanHooks();
     RemoveOpenGLHooks();
     RemoveD3D9Hooks();
+    RemoveD3D8Hooks();
     MH_Uninitialize();
     g_hooksInstalled = false;
 

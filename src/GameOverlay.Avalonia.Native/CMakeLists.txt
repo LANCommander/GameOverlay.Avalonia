@@ -33,6 +33,8 @@ if(WIN32)
     set(payload_sources
         dllmain.cpp
         hooks.cpp
+        d3d8_renderer.cpp
+        d3d8_hooks.cpp
         d3d9_renderer.cpp
         d3d9_hooks.cpp
         d3d10_renderer.cpp

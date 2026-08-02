@@ -26,10 +26,15 @@ namespace overlay {
 //   3 - added graphicsApi + shared-fence transport for D3D12
 //   4 - added D3D10 (legacy-shared keyed-mutex texture transport)
 //   5 - added D3D9 (CPU shared-memory frame transport)
-constexpr uint32_t kAbiVersion = 5;
+//   6 - added D3D8 (shares the D3D9 CPU shared-memory frame transport)
+constexpr uint32_t kAbiVersion = 6;
 
 enum : uint32_t {
     kGraphicsApiUnknown = 0,
+    // D3D8 predates DXGI entirely and, like D3D9, cannot open any GPU-shared
+    // texture. It reuses the D3D9 CPU shared-memory frame transport verbatim -
+    // the only differences are in the API calls the payload's renderer makes.
+    kGraphicsApiD3D8 = 8,
     // D3D9 has no DXGI and cannot open any GPU-shared texture the other APIs
     // use, so it takes a CPU transport instead: the host copies the overlay
     // pixels into a second shared-memory mapping and the payload uploads them.

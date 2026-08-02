@@ -17,9 +17,9 @@ internal sealed class WindowsPlatformBackend : IPlatformBackend
         => new HotkeyListener(hotkey, onToggle, log);
 
     public IFrameProducer CreateFrameProducer(GameGraphicsApi api, IProcessInjector game, OverlaySharedState state, Action<string>? log)
-        // D3D9 has no GPU-shared texture path, so it takes the CPU shared-memory
-        // transport; everything else shares a GPU texture.
-        => api == GameGraphicsApi.D3D9
+        // D3D8 and D3D9 have no GPU-shared texture path, so they take the CPU
+        // shared-memory transport; everything else shares a GPU texture.
+        => api is GameGraphicsApi.D3D8 or GameGraphicsApi.D3D9
             ? new CpuFrameProducer(state, log)
             : new SharedTextureProducer(game, state, log);
 
