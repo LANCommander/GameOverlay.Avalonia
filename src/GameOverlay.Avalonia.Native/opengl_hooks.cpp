@@ -40,7 +40,9 @@ void OnSwap(HDC hdc) {
 
     // A current GL context is what distinguishes a real GL present from an
     // ordinary GDI double-buffer swap on the same entry point.
-    if (!g_wglGetCurrentContext || !g_wglGetCurrentContext()) return;
+    if (!g_wglGetCurrentContext || !g_wglGetCurrentContext()) {
+        return;
+    }
 
     SharedState* state = GetSharedState();
     if (!state) return;
