@@ -5,7 +5,13 @@
          publish rate, target bounds) are how the verification tools drive and
          check the overlay. -->
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Pinned to the library's Windows platform version (its WindowsTfm): the
+         -test-pattern diagnostic reaches the library's Windows-only internals
+         (GameProcess, HotkeyListener), which are compiled only into the Windows
+         TFM asset. A lower platform version (plain net10.0-windows) makes NuGet
+         resolve the portable net10.0 asset instead, where Platform/Windows is
+         compiled out - so those types vanish and the sample fails to build. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

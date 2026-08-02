@@ -59,7 +59,7 @@ $sampleProj = Join-Path $repo 'src\GameOverlay.Avalonia.Sample\GameOverlay.Avalo
 dotnet build $sampleProj -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Managed build failed' }
 
-$sampleExe = Join-Path $repo "src\GameOverlay.Avalonia.Sample\bin\$Configuration\net10.0-windows\win-x64\GameOverlay.Avalonia.Sample.exe"
+$sampleExe = Join-Path $repo "src\GameOverlay.Avalonia.Sample\bin\$Configuration\net10.0-windows10.0.19041.0\win-x64\GameOverlay.Avalonia.Sample.exe"
 
 Write-Host ''
 Write-Host 'Build complete:'
