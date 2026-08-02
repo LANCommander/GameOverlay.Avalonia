@@ -3,8 +3,10 @@
   <PropertyGroup>
     <!-- net10.0-windows carries the Win32 backend (injection, DXGI sharing, the
          native payload); net10.0 is the portable build the Linux/macOS backends
-         slot into. -->
-    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+         slot into. The Windows TFM is pinned to an explicit platform version
+         (defined once as WindowsTfm) so NuGet restore doesn't raise NU1012. -->
+    <WindowsTfm>net10.0-windows10.0.19041.0</WindowsTfm>
+    <TargetFrameworks>net10.0;$(WindowsTfm)</TargetFrameworks>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -13,7 +15,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <!-- Only the Windows build is pinned to a RID (it ships the win-x64 native
          payload). The portable build stays RID-agnostic. -->
-    <RuntimeIdentifier Condition="'$(TargetFramework)' == 'net10.0-windows'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(TargetFramework)' == '$(WindowsTfm)'">win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <RootNamespace>GameOverlay.Avalonia</RootNamespace>
     <AssemblyName>GameOverlay.Avalonia</AssemblyName>
@@ -40,7 +42,7 @@
 
   <!-- Windows-only dependencies: the Win32 platform (KeyInterop lives here) and
        the Vortice D3D11/DXGI wrappers the shared-texture producer uses. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+  <ItemGroup Condition="'$(TargetFramework)' == '$(WindowsTfm)'">
     <PackageReference Include="Avalonia.Win32" Version="11.3.12" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
@@ -50,11 +52,11 @@
        the portable build compiles Platform/Fallback (and, later, Platform/Linux
        etc.). Only one backend implementation of PlatformServices.CreateBackend
        is ever in a given compilation. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+  <ItemGroup Condition="'$(TargetFramework)' == '$(WindowsTfm)'">
     <Compile Remove="Platform/Fallback/**/*.cs" />
     <Compile Remove="Platform/Linux/**/*.cs" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-windows'">
+  <ItemGroup Condition="'$(TargetFramework)' != '$(WindowsTfm)'">
     <Compile Remove="Platform/Windows/**/*.cs" />
   </ItemGroup>
 
@@ -62,7 +64,7 @@
        package or project reference lands it next to the consumer's binary. Built
        by CMake into build/bin; build.ps1 runs that before packing. Windows TFM
        only. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+  <ItemGroup Condition="'$(TargetFramework)' == '$(WindowsTfm)'">
     <None Include="$(MSBuildThisFileDirectory)..\..\build\bin\GameOverlay.Native.dll"
           Condition="Exists('$(MSBuildThisFileDirectory)..\..\build\bin\GameOverlay.Native.dll')"
           Link="GameOverlay.Native.dll"
