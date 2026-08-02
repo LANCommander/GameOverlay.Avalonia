@@ -161,7 +161,6 @@ internal sealed class OverlaySession : IDisposable
                 if (_source is OverlayHost host)
                 {
                     _inputRouter = new InputRouter(_state, host.TopLevel, PlatformServices.CreateKeyMapper(), _log);
-                    _inputRouter.CursorMoved += host.SetCursorPosition;
                 }
                 return;
             }

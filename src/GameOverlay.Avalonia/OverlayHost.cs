@@ -36,7 +36,6 @@ internal sealed class OverlayHost : IFrameSource
     private readonly OverlayTopLevelImpl _topLevel;
     private readonly EmbeddableControlRoot _root;
     private readonly ContentControl _contentHost;
-    private readonly OverlayCursor _cursor = new();
     private readonly double? _scalingOverride;
 
     private bool _renderingStarted;
@@ -65,11 +64,9 @@ internal sealed class OverlayHost : IFrameSource
             TransparencyLevelHint = new[] { global::Avalonia.Controls.WindowTransparencyLevel.Transparent },
             TransparencyBackgroundFallback = Brushes.Transparent,
 
-            // Consumer content underneath, the library cursor on top.
-            Content = new Panel { Children = { _contentHost, _cursor.Visual } },
+            Content = _contentHost,
         };
 
-        _topLevel.CursorChanged += _cursor.SetShape;
         _root.Prepare();
         // StartRendering is deferred to the first real Resize, so we never render
         // a zero-sized frame.
@@ -109,20 +106,15 @@ internal sealed class OverlayHost : IFrameSource
     }
 
     /// <summary>
-    /// Shows/hides the cursor and moves focus into the overlay when it becomes
-    /// interactive, so typing has somewhere to go.
+    /// Moves focus into the overlay when it becomes interactive, so typing has
+    /// somewhere to go.
     /// </summary>
     public void SetInteractive(bool interactive)
         => Dispatcher.UIThread.Post(() =>
         {
             if (_disposed) return;
-            _cursor.SetVisible(interactive);
             if (interactive) FocusFirstControl();
         }, DispatcherPriority.Input);
-
-    public void SetCursorPosition(Point position)
-        => Dispatcher.UIThread.Post(() => { if (!_disposed) _cursor.SetPosition(position); },
-                                    DispatcherPriority.Input);
 
     private void FocusFirstControl()
     {

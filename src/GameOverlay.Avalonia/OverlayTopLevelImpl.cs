@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls.Embedding.Offscreen;
@@ -54,45 +53,10 @@ internal sealed class OverlayTopLevelImpl : OffscreenTopLevelImplBase
     public void DispatchInput(RawInputEventArgs args) => Input?.Invoke(args);
 
     /// <summary>
-    /// The cursor Avalonia last asked for, so the overlay can draw the right
-    /// glyph - there is no OS cursor to set when we are not a real window.
+    /// The overlay is not a real window, so there is no OS cursor to set and the
+    /// pointer relies on the game's own/OS cursor. Nothing to do.
     /// </summary>
-    public StandardCursorType CurrentCursor { get; private set; } = StandardCursorType.Arrow;
-
-    public event Action<StandardCursorType>? CursorChanged;
-
-    public override void SetCursor(ICursorImpl? cursor)
-    {
-        // Avalonia hands us a platform cursor object. Win32's implementation
-        // does not expose which standard cursor it came from, so recover it
-        // from the Cursor wrapper's ToString-able type where possible and fall
-        // back to an arrow. Good enough to distinguish the common shapes.
-        StandardCursorType resolved = cursor is null
-            ? StandardCursorType.Arrow
-            : ResolveCursorType(cursor);
-
-        if (resolved == CurrentCursor) return;
-        CurrentCursor = resolved;
-        CursorChanged?.Invoke(resolved);
-    }
-
-    private static StandardCursorType ResolveCursorType(ICursorImpl cursor)
-    {
-        // Win32's CursorImpl keeps the StandardCursorType it was created from
-        // in a private field. Best-effort: a wrong glyph is cosmetic, so never
-        // let this throw.
-        try
-        {
-            FieldInfo? field = cursor.GetType().GetField(
-                "_cursorType", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (field?.GetValue(cursor) is StandardCursorType type) return type;
-        }
-        catch
-        {
-            // ignored - fall through to Arrow
-        }
-        return StandardCursorType.Arrow;
-    }
+    public override void SetCursor(ICursorImpl? cursor) { }
 
     /// <summary>
     /// The pointer device the base class requires. See

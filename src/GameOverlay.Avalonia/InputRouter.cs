@@ -77,8 +77,6 @@ internal sealed class InputRouter : IDisposable
     public Point CursorPosition => new(_cursorX / _topLevel.RenderScaling,
                                        _cursorY / _topLevel.RenderScaling);
 
-    public event Action<Point>? CursorMoved;
-
     private void DrainLoop()
     {
         var batch = new List<SharedInputEvent>(64);
@@ -132,8 +130,6 @@ internal sealed class InputRouter : IDisposable
             return;
         }
 
-        bool cursorChanged = false;
-
         foreach (SharedInputEvent evt in events)
         {
             RawInputModifiers modifiers = Translate(evt.Modifiers);
@@ -142,13 +138,11 @@ internal sealed class InputRouter : IDisposable
             {
                 case InputEventType.MouseMove:
                     SetCursor(evt.X, evt.Y);
-                    cursorChanged = true;
                     Dispatch(RawEventFactory.Pointer(pointer, root, RawPointerEventType.Move, CursorPosition, modifiers));
                     break;
 
                 case InputEventType.MouseMoveDelta:
                     MoveCursor(evt.X, evt.Y);
-                    cursorChanged = true;
                     Dispatch(RawEventFactory.Pointer(pointer, root, RawPointerEventType.Move, CursorPosition, modifiers));
                     break;
 
@@ -156,7 +150,6 @@ internal sealed class InputRouter : IDisposable
                 case InputEventType.MouseUp:
                     {
                         SetCursor(evt.X, evt.Y);
-                        cursorChanged = true;
                         bool down = evt.Type == InputEventType.MouseDown;
                         RawPointerEventType? type = (SharedMouseButton)evt.Data switch
                         {
@@ -176,7 +169,6 @@ internal sealed class InputRouter : IDisposable
                 case InputEventType.MouseHWheel:
                     {
                         SetCursor(evt.X, evt.Y);
-                        cursorChanged = true;
                         // Data was written as a signed short widened through uint.
                         double notches = unchecked((short)evt.Data) / WheelDelta;
                         Vector delta = evt.Type == InputEventType.MouseWheel
@@ -213,8 +205,6 @@ internal sealed class InputRouter : IDisposable
                     }
             }
         }
-
-        if (cursorChanged) CursorMoved?.Invoke(CursorPosition);
     }
 
     private void Dispatch(RawInputEventArgs args)
